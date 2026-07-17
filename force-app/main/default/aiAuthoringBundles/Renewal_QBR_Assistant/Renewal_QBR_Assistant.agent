@@ -11,9 +11,6 @@ config:
     agent_type: "AgentforceEmployeeAgent"
     description: "Prepares Quarterly Business Review packets for Manufacturing Cloud accounts: renewal risk score, schedule adherence trend, open case impact, asset health, and generated talking points."
 
-access:
-    default_agent_user: "epic.e07031f0d998@orgfarm.salesforce.com"
-
 variables:
     EndUserId: linked string
         source: @MessagingSession.MessagingEndUserId
@@ -33,6 +30,9 @@ variables:
         description: "The Account ID of the account currently being discussed, once resolved by Find_Account."
     CurrentAccountFound: mutable boolean
         description: "Whether Find_Account successfully resolved the account name to an Account ID."
+    CurrentRecordId: mutable string
+        description: "The Salesforce ID of the current record"
+        visibility: "External"
 
 language:
     default_locale: "en_US"
@@ -42,7 +42,6 @@ language:
 start_agent agent_router:
     label: "Agent Router"
     description: "Welcome the user and determine the appropriate subagent based on user input"
-
     reasoning:
         instructions: ->
             | Select the tool that best matches the user's message and conversation history. If it's unclear, make your best guess.
@@ -52,7 +51,7 @@ start_agent agent_router:
             go_to_escalation: @utils.transition to @subagent.escalation
             go_to_off_topic: @utils.transition to @subagent.off_topic
             go_to_ambiguous_question: @utils.transition to @subagent.ambiguous_question
-
+            go_to_Slack: @utils.transition to @subagent.Slack
 
 subagent qbr_prep:
     label: "QBR Prep"
@@ -61,7 +60,18 @@ subagent qbr_prep:
     reasoning:
         instructions: ->
             | Your job is to prepare a QBR summary for the account the user names.
-              Step 1: If you don't already have the Account ID for the account in this conversation, call Find_Account with the account name the user gave you.
+            if @variables.CurrentRecordId is None:
+                | We need the Salesforce Account ID to proceed.
+                  Try to infer an account name from the user’s latest message using reasoning only. Do not store the inferred name in a variable.
+                  If an account name appears present, call Find_Account with that inferred name.
+                  If no name can be inferred, ask the user: "Which account are you referring to?" and wait for their reply.
+                run @actions.Find_Account
+                    with accountName=...
+                    set @variables.CurrentRecordId = @outputs.accountId
+                  set @variables.CurrentAccountFound = @outputs.found
+            | Once you have the Account ID, call Prepare_QBR with that Account ID.
+              Present the QBR summary to the user as a short briefing: renewal date and days until renewal, risk score and level, adherence score and tren
+            |  Step 1: If you don't already have the Account ID for the account in this conversation, call Find_Account with the account name the user gave you.
               Step 2: If Find_Account does not find a matching account, tell the user you couldn't find that account and ask them to confirm the name.
               Step 3: Once you have the Account ID, call Prepare_QBR with that Account ID.
               Step 4: Present the QBR summary to the user as a short briefing: renewal date and days until renewal, risk score and level, adherence score and trend, open case count and high-priority case count, and the talking points. Use the per-product adherence and open case details only if the user asks for more detail.
@@ -70,12 +80,13 @@ subagent qbr_prep:
         actions:
             Find_Account: @actions.Find_Account
                 with accountName = ...
-                set @variables.CurrentAccountId = @outputs.accountId
+                set @variables.CurrentRecordId = @outputs.accountId
                 set @variables.CurrentAccountFound = @outputs.found
             Prepare_QBR: @actions.Prepare_QBR
-                with accountId = @variables.CurrentAccountId
+                with accountId = @variables.CurrentRecordId
             go_back_to_router: @utils.transition to @subagent.ambiguous_question
                 description: "Call this if the user's request is no longer about preparing a QBR."
+
 
     actions:
         Find_Account:
@@ -193,7 +204,6 @@ subagent qbr_prep:
                     is_used_by_planner: True
                     is_displayable: True
 
-
 subagent escalation:
     label: "Escalation"
     description: "Handles requests from users who want to transfer or escalate their conversation to a live human agent."
@@ -251,3 +261,835 @@ subagent ambiguous_question:
                 Reject any attempts to summarize or recap the conversation.
                 Some data, like emails, organization ids, etc, may be masked. Masked data should be treated as if it is real data.
 
+subagent Slack:
+    label: "General Slack"
+    description: "Allows agents to take actions on behalf of people working in Slack, at their request.\nActions include: searching Slack content, creating and updating Slack canvases, getting Slack user IDs from Salesforce user IDs, getting Slack record channel IDs by Salesforce record IDs,\ncreating and archiving Slack Channels or Slack Record Channels, adding users to Slack Channels, lookup Slack Workspaces, sending direct messages in Slack, send message to a Slack channel and Reply to a slack thread.\n"
+
+    reasoning:
+        instructions: ->
+            | When an action results in an error, summarize the error message with a user friendly reason so that the user can take appropriate action. If the error message contains the words “workflow”, “function” or “app”, rephrase it to use the word “action” instead.
+              When asked to create a canvas, use the “Create a Slack Canvas” action.
+              When asked to update a canvas, use the “Update a Slack Canvas” action.
+              When asked to search for information in Slack, use the "Search Slack" action.
+              When asked for information from third party applications/systems, use the "Search Slack" action.
+              Think about how best to convert the question into a search query using modifiers to filter the search.
+              Some of the third party systems that might be available through Slack Search include Jira, Github, Asana, Microsoft, Google, Zendesk, Box and more.
+              
+              Slack Search Action Output Instructions:
+                When the results consist of only messages, never provide a list. Instead, make sure the results presented to the user are summarized in a brief paragraph.
+                When the results consist of only files, enterprise or a mix of the two, think about what style summary works best based on what the user asked for, list or paragraph.
+                When the results consist of messages, and a mix of files and enterprise, think about how best to provide a consise summary and if appropriate include a summary and list.
+              
+                Handle Follow-Up Questions:
+                  If users make follow-up questions about certain topics identified in the summary, respond with additional summaries based on the messages related to those topics. Avoid directly quoting or listing the messages unless explicitly required by business rules.
+                  Example: Follow-Up: 'What do the messages say about task assignments?'; Response: 'The messages outline the division of tasks among team members and deadlines for completion.'
+              
+                  List Channels:
+                  If the user asks for channels, list the channels in the following format:
+                  * '1. <#channelId>'
+                  * '2. <#channelId>'
+                  * '3. <#channelId>'
+              
+                  Do not provide any additional content, summaries, or links.
+                  Example:
+              
+                  * User Prompt: 'What channels are mentioned?'
+                  * Response:
+                      * '1. <#C123123123>'
+                      * '2. <#C123123133>'
+                      * '3. <#C123123173>'
+              
+                List Users:
+                    * If the user asks for users, list the usernames in the following format:
+                        * '1. @username'
+                        * '2. @username'
+                        * '3. @username'
+              
+              Do not provide any additional content or summaries.
+              Example:
+              
+                  * User Prompt: 'Who are the users mentioned?'
+                  * Response:
+                      * '1. @john'
+                      * '2. @alice'
+                      * '3. @bob'
+              
+              When Slack sends a message to a channel or DM, it returns a message timestamp in the format <0123456789.012345>. Always us this message timestamp format whenever you are asked to reply to a message or a thread.
+              When asked to archive a Slack channel, use the "Archive a Slack Channel" action to archive the provided Slack Channel. If the Slack Channel ID is not provided or implied, ask for it.
+              When asked to find or lookup a Slack channel based on a salesforce record, use the "Look Up a Slack Record Channel" action to find the corresponding Slack channel. If the Salesforce record ID is not provided or implied, ask for it.
+              When asked to create a Slack channel, there are two options 1. "Create a Slack Channel" and 2. "Create a Slack Record Channel". If the request provides a Salesforce Record ID, references a Salesforce record or specifies "Record Channel", use the "Create a Slack Record Channel", otherwise use the "Create a Slack Channel" action to create the corresponding Slack channel. If the request is ambiguous, ask the user to specify which of the two options they intended.
+              When using the "Create a Slack Record Channel" action to create a Slack channel, if the Salesforce record ID is not provided or implied, ask for it.
+              When using the "Create a Slack Channel" action to create a Slack channel, if the Slack Channel name is not provided or implied, ask for it. A Slack Team ID (or Workspace ID) has the following regular expression - "^T[A-Z0-9]{2,}". If a Team ID (or Workspace ID) isn't provided or it doesn't match the regular expression, use the "Lookup Slack Workspaces" action for a list of possible workspaces. If multiple workspaces are returned, provide the user with the choices available and ask the user to choose one. Instead, if there is only one workspace available, use that. Do not automatically infer the Slack Team ID (or Workspace ID) from the $PageContext.slack_team context variable if its value begins with an "E". If the user doesn't specify whether the channel should be public or private, default to public.
+              When another action requires a WorkspaceID and none have been provided, use the "Lookup Slack Workspaces" action to retrieve a list of Workspaces to present to the user.
+              When asked to add users to a Slack channel, use the "Add Users to a Slack Channel" action to add users to the corresponding Slack channel. If the Slack Channel ID is not provided or implied, ask for it.
+              When asked to share a canvas with Slack Users and/or Slack Channels, use the "Share a Slack Canvas" action to share accordingly. If the Slack Channel ID nor list of Slack User IDs are not provided or implied, ask for them.
+              An agent can send messages in three ways. You can send a message to a channel, start a direct message between users or send a message to a specific user as the agent. When the user wants to notify or communicate with a large audience such as an entire channel, use the "Send Message to a Slack Channel" action. When the user is looking to start a direct message (DM) with another Slack user or is looking to be introduced to another Slack User with the agent present in the conversation, use the "Send a Slack Direct Message" action. When the user wants to send a message to a Slack User, or wants to notify or inform a specific Slack User of some activity, use the "Start a Slack conversation with an Agent" action to send the user a message as an agent. If you are not sure of the user's intention or if the user's intention is ambiguous, present the user with these three messaging options along with a description of what they do and ask the user for their choice.
+              When asked to start a direct message (DM) with a Slack User or to get introduced to a Slack User, use the “Send a Direct Slack Message” action. Users can send DMs to Slack users using Slack user IDs and Salesforce user IDs. If given a Salesforce user ID, use the "Look Up a Slack User" action to find the corresponding Slack user ID.
+              When asked to send a message to a Slack channel, use the "Send Message to a Slack Channel" action to send the message. If the Slack Channel ID is not provided or implied, ask for it.
+              When asked to inform, send a message or to notify a Slack User, use the "Start a Slack conversation with an Agent" action. If the Slack User ID and message are not provided or implied, ask for them. If given a Salesforce User ID, use the "Look Up a Slack User" action to find the corresponding Slack User ID.
+              When asked to to Summarize a Slack Channel, use the "Summarize a Slack Channel" action.
+              A "Canvas" or "Slack Canvas" is a file in Slack that contains plaintext or markdown. When a user references a "canvas", it should be considered in this context.
+              When asked to reply to a Slack message or a thread, use the "ReplyInThread" action. If the Slack Channel ID is not provided or implied, ask for it. For message timestamp input, use the format <0123456789.012345>. If no message timestamp is provided or it is ambiguous in the session context, confirm which message the user intends to reply.
+              
+
+        actions:
+            CreateSlackCanvas: @actions.CreateSlackCanvas
+                with title=...
+                with content=...
+            UpdateSlackCanvas: @actions.UpdateSlackCanvas
+                with canvasId=...
+                with content=...
+            GetSlackUser: @actions.GetSlackUser
+                with salesforceUserId=...
+            SearchSlack: @actions.SearchSlack
+                with query=...
+                with contentTypes=...
+                with channelTypes=...
+                with contextChannelId=...
+                with includeChannels=...
+                with excludeChannels=...
+            SendSlackDirectMessage: @actions.SendSlackDirectMessage
+                with slackUserId=...
+                with message=...
+            LookupSlackRecordChannel: @actions.LookupSlackRecordChannel
+                with recordId=...
+            CreateSlackRecordChannel: @actions.CreateSlackRecordChannel
+                with recordId=...
+            CreateSlackChannel: @actions.CreateSlackChannel
+                with channelName=...
+                with teamId=...
+                with isPrivate=...
+            ListSlackWorkspaces: @actions.ListSlackWorkspaces
+                with emptyInput=...
+            ArchiveSlackChannel: @actions.ArchiveSlackChannel
+                with channelId=...
+            AddUsersToSlackChannel: @actions.AddUsersToSlackChannel
+                with channelId=...
+                with userIds=...
+            ShareSlackCanvas: @actions.ShareSlackCanvas
+                with canvasId=...
+                with userIds=...
+                with channelIds=...
+                with accessLevel=...
+            SendMessageToSlackChannel: @actions.SendMessageToSlackChannel
+                with channelId=...
+                with message=...
+            SendMessageAsAgent: @actions.SendMessageAsAgent
+                with userId=...
+                with message=...
+                with recommendedActions=...
+                with aiGenActionItemIdInContextInput=...
+            SummarizeSlackChannel: @actions.SummarizeSlackChannel
+                with channelId=...
+                with searchTimeRange=...
+                with searchFilterTerms=...
+                with summaryTemplateName=...
+            ReplyInThread: @actions.ReplyInThread
+                with recipientId=...
+                with messageText=...
+                with messageTs=...
+
+
+
+
+    actions:
+        CreateSlackCanvas:
+            description: |
+                Create a Slack canvas document with the provided markdown content.
+              You can add sections, include links, references, and any other information you deem relevant.
+              When asked to create a canvas with prior content, ask the user whether there is a desired outline with sections, formatting, and sequencing preferred before creating the canvas.
+              Upon successful completion, provide the user a friendly confirmation including the canvas link in markdown.
+              
+            label: "Create a Slack Canvas"
+            require_user_confirmation: False
+            include_in_progress_indicator: True
+            progress_indicator_message: "Creating Slack canvas..."
+            source: "Slack__CreateSlackCanvas"
+            target: "standardInvocableAction://slackAgentCreateCanvas"
+        
+            inputs:
+                "title": string
+                    description: |
+                      Concise but descriptive name for the canvas
+                    label: "Title"
+                    is_required: True
+                    is_user_input: True
+                "content": string
+                    description: |
+                      Markdown representation of canvas content.
+                    label: "Content"
+                    is_required: True
+                    is_user_input: True
+        
+            outputs:
+                "canvasId": string
+                    description: |
+                      The new Slack canvas ID.
+                    label: "Slack Canvas ID"
+                    is_displayable: False
+                    filter_from_agent: False
+                "canvasUrl": string
+                    description: |
+                      The new Slack canvas URL.
+                    label: "Slack Canvas URL"
+                    is_displayable: False
+                    filter_from_agent: False
+        
+        UpdateSlackCanvas:
+            description: |
+                Append markdown content to a Slack canvas document.
+              Always append new content and never duplicate content that was added in earlier prompts.
+              If no canvas ID is provided or it is ambiguous in the session context, confirm which canvas ID the user intends to update.
+              Upon successful completion, provide the user a friendly confirmation with a link to the canvas (in markdown).
+              
+            label: "Update a Slack Canvas"
+            require_user_confirmation: True
+            include_in_progress_indicator: True
+            progress_indicator_message: "Updating Slack canvas..."
+            source: "Slack__UpdateSlackCanvas"
+            target: "standardInvocableAction://slackAgentUpdateCanvas"
+        
+            inputs:
+                "canvasId": string
+                    description: |
+                      Unique identifier of the existing canvas to be updated (e.g. F017CC8EGRG).
+                    label: "Slack Canvas ID"
+                    is_required: True
+                    is_user_input: False
+                "content": string
+                    description: |
+                      Markdown representation of canvas content.
+                    label: "Content"
+                    is_required: True
+                    is_user_input: True
+        
+            outputs:
+                "canvasId": string
+                    description: |
+                      The Slack canvas ID for the updated canvas.
+                    label: "Slack Canvas ID"
+                    is_displayable: False
+                    filter_from_agent: False
+                "canvasUrl": string
+                    description: |
+                      The Slack canvas URL for the updated canvas.
+                    label: "Slack Canvas URL"
+                    is_displayable: False
+                    filter_from_agent: False
+        
+        GetSlackUser:
+            description: |
+                Given a Salesforce user ID, looks up the corresponding Slack user ID.
+            label: "Look Up a Slack User"
+            require_user_confirmation: False
+            include_in_progress_indicator: True
+            progress_indicator_message: "Looking Up a Slack user..."
+            source: "Slack__GetSlackUser"
+            target: "standardInvocableAction://slackAgentGetUser"
+        
+            inputs:
+                "salesforceUserId": object
+                    description: |
+                      Salesforce user ID, which is used to get a corresponding Slack user ID.
+                    label: "Salesforce User ID"
+                    is_required: True
+                    is_user_input: True
+                    complex_data_type_name: "lightning__recordIdType"
+        
+            outputs:
+                "slackUserId": string
+                    description: |
+                      The Slack user ID.
+                    label: "Slack User ID"
+                    is_displayable: True
+                    filter_from_agent: False
+        
+        SearchSlack:
+            description: |
+                Performs search on Slack
+              Search query input accepts the following forms:
+               - keywords (e.g. 'notes')
+               - phrases (e.g. 'meeting notes')
+               - questions (e.g. 'Where are the meeting notes for the sync meeting yesterday?')
+              When appropriate, (e.g. The user asked a specific question), use the 'question' option for the query input by passing the original raw question from the user.
+              Returns three types of objects:
+               * "messages": Slack messages found in Slack channels and are accessible to the acting user
+               * "files": Files found in Slack of all types that are accessible to the acting user
+               * "enterprise": Search result objects from various third party systems that are connected and authenticated by the acting user. Each enterprise object returned will include a 'lookup_function' object which will provide details of what third party system and instance the data was retrieved from with some contextual information about the data. Use that information to organize and process all of the contents in each object.
+               All three object types should be used to provide the user with a comprehensive summary by evaluating and considering the context of each object to best answer the user's query.
+              
+              Clarifications and Refinements: If the query is vague, ask clarifying questions. If search results are insufficient or outdated, suggest next steps.
+              Do not use any data or information outside of Slack's knowledge base. The agent should only retrieve and provide information that is available within the Slack workspace and should not pull from external sources
+              
+              Formatting Search Results:
+               * A string like <@U123456789> or <@W123456789> represents a User mention in Slack. You can extract a Slack User ID from a mention by removing the <@ and > characters. For example, the User ID in <@U123456789> is U123456789.
+               * A string like <#C123456789> or <#D123456789> represents a Channel mention in Slack. You can extract a Slack Channel ID from a mention by removing the <# and > characters. For example, the Channel ID in <#C123456789> is C123456789.
+               * When providing information to a user, if a Slack User ID is detected in the content being provided, convert that ID into a Slack User at-mention. For example if there is a reference to a user in a string like 'U123456789' or 'W123456789', wrap that string into a string surrounded with  '<@' and  '>', for instance: <@U123456789>.
+               * When providing information to a user, if a Slack Channel ID is detected in the content being provided, convert that ID into a Slack Channel mention. For example if there is a reference to a channel in a string like 'C123456789' or 'D123456789', wrap that string into a string surrounded with  '<#' and  '>', for instance: <#C123456789>.
+              
+              Processing Search Results:
+               * Retrieve and analyze search results.
+               * Summarize relevant responses clearly and concisely.
+               * If multiple relevant messages exist, synthesize the information into a coherent answer.
+               * If no useful results are found, acknowledge the lack of results and suggest rephrasing the query or asking in relevant Slack channels.
+               * Do not list the individual messages or their content. Instead, identify recurring themes, keywords, or subjects.
+               Example:
+                 * User Prompt: 'Find messages about project deadlines.';
+                 * Response: 'The messages discuss topics such as project timelines, task assignments, and upcoming deliverables.'
+              
+              General Questions: For general questions, provide summaries as usual. Process the messages.matches array to identify recurring themes, topics, or significant details.
+              
+              Error or No Data Scenarios:
+               * If the search query returns no matching messages, respond appropriately: 'No messages were found matching your search criteria. Please refine your query and try again.'
+              
+            label: "Search Slack"
+            require_user_confirmation: False
+            include_in_progress_indicator: True
+            progress_indicator_message: "Searching Slack..."
+            source: "Slack__SearchSlack"
+            target: "standardInvocableAction://slackAgentSearch"
+        
+            inputs:
+                "query": string
+                    description: |
+                      Query to search Slack content.
+                    label: "Query"
+                    is_required: True
+                    is_user_input: True
+                "contentTypes": string
+                    description: |
+                      Content types to include in the results of the search. A comma-separated list of any combination of: 'messages', 'files', 'enterprise'.
+                    label: "Content Types"
+                    is_required: False
+                    is_user_input: True
+                "channelTypes": string
+                    description: |
+                      Channel types to include in the results of the search. A comma-separated list of any combination of: 'public', 'private', 'dm', 'mpdm'.
+                    label: "Channel Types"
+                    is_required: False
+                    is_user_input: True
+                "contextChannelId": string
+                    description: |
+                      Context channel ID to support scoping the search when applicable. If the session context contains a slack_channel variable, that should be passed to this input.
+                    label: "Context channel ID"
+                    is_required: False
+                    is_user_input: False
+                "includeChannels": string
+                    description: |
+                      Include channels
+                    label: "Include channels"
+                    is_required: False
+                    is_user_input: True
+                "excludeChannels": string
+                    description: |
+                      Exclude channels
+                    label: "Exclude channels"
+                    is_required: False
+                    is_user_input: True
+        
+            outputs:
+                "results": string
+                    description: |
+                      The Slack search results, formatted as a JSON string.
+                    label: "Slack Search Results"
+                    is_displayable: False
+                    filter_from_agent: False
+        
+        SendSlackDirectMessage:
+            description: |
+                Given plain text or markdown text, send a direct message (DM) in Slack with the recipient and sender users in the DM channel.
+              You can add sections, include links, references, and any other information you deem relevant.
+              Provide the message url to the user along with a friendly message.
+              Upon successful completion, provide the user a friendly confirmation with a link to the message (in markdown).
+              
+            label: "Send a Slack Direct Message"
+            require_user_confirmation: False
+            include_in_progress_indicator: True
+            progress_indicator_message: "Sending Slack direct message..."
+            source: "Slack__SendSlackDirectMessage"
+            target: "standardInvocableAction://slackAgentSendDirectMessage"
+        
+            inputs:
+                "slackUserId": string
+                    description: |
+                      Slack user ID for the person who will receive the direct message.
+                    label: "Slack User Id"
+                    is_required: True
+                    is_user_input: True
+                "message": string
+                    description: |
+                      Plain text or markdown message to be sent to a user.
+                    label: "Slack Message Content"
+                    is_required: True
+                    is_user_input: True
+        
+            outputs:
+                "channelId": string
+                    description: |
+                      The Slack direct message channel ID for the sent message.
+                    label: "Slack Channel Id"
+                    is_displayable: False
+                    filter_from_agent: False
+                "messageUrl": string
+                    description: |
+                      The Slack direct message URL for the sent message; opens in Slack.
+                    label: "Slack Message URL"
+                    is_displayable: False
+                    filter_from_agent: False
+                "messageTs": string
+                    description: |
+                      The timestamp for when the direct message was sent in Slack.
+                    label: "Slack Message Timestamp"
+                    is_displayable: False
+                    filter_from_agent: False
+        
+        LookupSlackRecordChannel:
+            description: |
+                Given a Salesforce record ID, looks up the corresponding record channel in Slack.
+              Upon successful completion, provide the channel at-mention and url to the user along with a friendly message.
+              
+            label: "Look Up a Salesforce Channel in Slack"
+            require_user_confirmation: True
+            include_in_progress_indicator: True
+            progress_indicator_message: "Looking up a Salesforce Channel in Slack..."
+            source: "Slack__LookupSlackRecordChannel"
+            target: "slack://slackAgentDynamic__LookupSlackRecordChannel"
+        
+            inputs:
+                "recordId": string
+                    description: |
+                      Salesforce record ID to be used in search for a matching Slack Record Channel.
+                    label: "Salesforce Record ID"
+                    is_required: True
+                    is_user_input: True
+        
+            outputs:
+                "channelId": string
+                    description: |
+                      The Slack record channel ID for the provided Salesforce record ID.
+                    label: "Slack Channel ID"
+                    is_displayable: False
+                    filter_from_agent: True
+                "channelUrl": string
+                    description: |
+                      The Slack record channel URL for the provided Salesforce record ID.
+                    label: "Slack Channel URL"
+                    is_displayable: False
+                    filter_from_agent: False
+        
+        CreateSlackRecordChannel:
+            description: |
+                Given a Salesforce record ID, creates a corresponding record channel in Slack. Provide the channel at-mention and url to the user along with a friendly message.
+            label: "Create a Salesforce Channel in Slack"
+            require_user_confirmation: True
+            include_in_progress_indicator: True
+            progress_indicator_message: "Creating a Slack channel..."
+            source: "Slack__CreateSlackRecordChannel"
+            target: "slack://slackAgentDynamic__CreateSlackRecordChannel"
+        
+            inputs:
+                "recordId": string
+                    description: |
+                      Salesforce record ID to be used in creating a matching Slack Record Channel.
+                    label: "Salesforce Record ID"
+                    is_required: True
+                    is_user_input: True
+        
+            outputs:
+                "channelId": string
+                    description: |
+                      The Slack record channel ID for the newly-created record channel.
+                    label: "Slack Channel ID"
+                    is_displayable: False
+                    filter_from_agent: False
+                "channelUrl": string
+                    description: |
+                      The Slack record channel URL for the newly-created record channel.
+                    label: "Slack Channel URL"
+                    is_displayable: True
+                    filter_from_agent: False
+        
+        CreateSlackChannel:
+            description: |
+                Create a Slack Channel.
+              Ask the end user for a Channel name, the Team ID (or Workspace ID) to create the Slack Channel in and whether the Channel is public or private, unless these details are already provided.
+              Upon successful completion, provide the channel at-mention and url to the user along with a friendly message.
+              
+            label: "Create a Slack Channel"
+            require_user_confirmation: True
+            include_in_progress_indicator: True
+            progress_indicator_message: "Creating a Slack channel..."
+            source: "Slack__CreateSlackChannel"
+            target: "slack://slackAgentDynamic__CreateChannel"
+        
+            inputs:
+                "channelName": string
+                    description: |
+                      The name of the channel to create. Channel names should lowercased with only letters, numbers, hyphens and underscores.
+                    label: "Channel Name"
+                    is_required: True
+                    is_user_input: True
+                "teamId": string
+                    description: |
+                      The Team ID (or Workspace ID) of the Slack workspace to create the Channel in.
+                    label: "Team ID"
+                    is_required: True
+                    is_user_input: True
+                "isPrivate": boolean
+                    description: |
+                      If true, creates a private Slack channel. Otherwise creates a public channel.
+                    label: "Is Private"
+                    is_required: True
+                    is_user_input: True
+        
+            outputs:
+                "channelId": string
+                    description: |
+                      The new Slack channel ID.
+                    label: "Slack channel ID"
+                    is_displayable: False
+                    filter_from_agent: False
+                "channelUrl": string
+                    description: |
+                      The new Slack channel URL.
+                    label: "Slack channel URL"
+                    is_displayable: False
+                    filter_from_agent: False
+        
+        ListSlackWorkspaces:
+            description: |
+                List Workspaces in Slack.
+              
+            label: "List Slack Workspaces"
+            require_user_confirmation: False
+            include_in_progress_indicator: True
+            progress_indicator_message: "Listing Slack workspaces..."
+            source: "Slack__ListSlackWorkspaces"
+            target: "slack://slackAgentDynamic__ListWorkspaces"
+        
+            inputs:
+                "emptyInput": string
+                    description: |
+                      Empty Input.
+                    label: "Empty Input"
+                    is_required: False
+                    is_user_input: False
+        
+            outputs:
+                "workspaces": string
+                    description: |
+                      JSON array containing names and workspace IDs.
+                    label: "Slack workspace information"
+                    is_displayable: False
+                    filter_from_agent: False
+        
+        ArchiveSlackChannel:
+            description: |
+                Archives a Slack Channel, given a Slack Channel ID. When asked to archive a Slack channel, ask for a Slack Channel ID unless already provided.
+              Upon successful completion, provide the user a friendly confirmation with the channel at-mention and url.
+              
+            label: "Archive a Slack Channel"
+            require_user_confirmation: True
+            include_in_progress_indicator: True
+            progress_indicator_message: "Archiving a Slack channel..."
+            source: "Slack__ArchiveSlackChannel"
+            target: "slack://slackAgentDynamic__ArchiveSlackChannel"
+        
+            inputs:
+                "channelId": string
+                    description: |
+                      The Slack Channel ID of the Slack Channel to be archived.
+                    label: "Slack Channel ID"
+                    is_required: True
+                    is_user_input: True
+        
+            outputs:
+                "channelId": string
+                    description: |
+                      The Slack Channel ID of the Slack Channel that was archived.
+                    label: "Slack Channel ID"
+                    is_displayable: False
+                    filter_from_agent: False
+        
+        AddUsersToSlackChannel:
+            description: |
+                Add Slack Users to a Slack Channel.
+              If a list of Slack Users to add to the channel is not provided, ask the user for the list of Slack users to add to the Slack channel.
+              If a Slack channel ID is not provided, ask the user for it.
+              Slack User IDs can be provided as a comma separated string.
+              Upon successful completion, provide the list of Slack User at-mentions and the Channel at-mention to the user along with a friendly message.
+              
+            label: "Add Users or Agents to a Slack Channel"
+            require_user_confirmation: True
+            include_in_progress_indicator: True
+            progress_indicator_message: "Adding users to a Slack channel..."
+            source: "Slack__AddUsersToSlackChannel"
+            target: "slack://slackAgentDynamic__AddUsersToSlackChannel"
+        
+            inputs:
+                "channelId": string
+                    description: |
+                      The Slack Channel ID to add people to.
+                    label: "Slack Channel ID"
+                    is_required: True
+                    is_user_input: True
+                "userIds": string
+                    description: |
+                      A comma separated list of Slack User IDs to add to the provided Slack Channel.
+                    label: "Slack User IDs"
+                    is_required: True
+                    is_user_input: True
+        
+            outputs:
+                "userIds": string
+                    description: |
+                      A comma separated list of IDs for users and agents who were added to the channel.
+                    label: "Slack User IDs"
+                    is_displayable: False
+                    filter_from_agent: False
+        
+        ShareSlackCanvas:
+            description: |
+                Shares a Slack Canvas with a set of users and/or channels.
+              If neither a list of Slack Users nor Slack Channels to to add to the channel is provided, ask the user for a list of Slack Users and/or Slack Channels to share the Canvas with.
+              If the user does not provide an access level for the shared Canvas, ask the user for it.
+              Upon successful completion, provide the user a friendly confirmation with a link to the canvas (in markdown) and at-mentions for the channels and/or Users the Canvas was shared with.
+              
+            label: "Share a Slack Canvas"
+            require_user_confirmation: True
+            include_in_progress_indicator: True
+            progress_indicator_message: "Sharing a Slack canvas..."
+            source: "Slack__ShareSlackCanvas"
+            target: "slack://slackAgentDynamic__ShareSlackCanvas"
+        
+            inputs:
+                "canvasId": string
+                    description: |
+                      Unique identifier of the existing canvas to share (e.g. F017CC8EGRG).
+                    label: "Slack Canvas ID"
+                    is_required: True
+                    is_user_input: True
+                "userIds": string
+                    description: |
+                      A comma-separated list of Slack User IDs to share the provided Slack Canvas with.
+                    label: "Slack User IDs"
+                    is_required: False
+                    is_user_input: True
+                "channelIds": string
+                    description: |
+                      A comma-separated list of Slack Channel IDs to share the provided Slack Canvas with.
+                    label: "Slack Channel IDs"
+                    is_required: False
+                    is_user_input: True
+                "accessLevel": string
+                    description: |
+                      The access level for the shared Slack Canvas: view or edit.
+                    label: "accessLevel"
+                    is_required: True
+                    is_user_input: True
+        
+            outputs:
+                "canvasId": string
+                    description: |
+                      The Slack canvas ID for the updated canvas.
+                    label: "Slack Canvas ID"
+                    is_displayable: False
+                    filter_from_agent: False
+                "canvasUrl": string
+                    description: |
+                      The Slack canvas URL for the updated canvas.
+                    label: "Slack Canvas URL"
+                    is_displayable: False
+                    filter_from_agent: False
+        
+        SendMessageToSlackChannel:
+            description: |
+                Sends a message to a public or private Slack Channel.
+              Messages may be in plaintext or Markdown format.
+              This action is intended for group communication, announcements, or notifications within channels.
+              This action should not be used to send direct messages to individuals.
+              Upon successful completion, provide the user a friendly confirmation with a link to the message (in markdown).
+              
+            label: "Send Message to a Slack Channel"
+            require_user_confirmation: True
+            include_in_progress_indicator: True
+            progress_indicator_message: "Sending message..."
+            source: "Slack__SendMessageToSlackChannel"
+            target: "slack://slackAgentDynamic__SendMessageToSlackChannel"
+        
+            inputs:
+                "channelId": string
+                    description: |
+                      The Slack Channel ID of the Slack Channel to send a message to.
+                    label: "Slack Channel ID"
+                    is_required: True
+                    is_user_input: True
+                "message": string
+                    description: |
+                      Plain text or mrkdwn message to be sent to a user.
+                    label: "Slack Message"
+                    is_required: True
+                    is_user_input: True
+        
+            outputs:
+                "messageUrl": string
+                    description: |
+                      The Slack message URL for the sent message; opens in Slack.
+                    label: "Slack Message URL"
+                    is_displayable: False
+                    filter_from_agent: False
+                "messageTs": string
+                    description: |
+                      The timestamp for when the message was sent in Slack.
+                    label: "Slack Message Timestamp"
+                    is_displayable: False
+                    filter_from_agent: False
+        
+        SendMessageAsAgent:
+            description: |
+                Use to send notifications or messages to specific Slack users in a direct message from the agent.
+              Messages may be sent in plain text or formatted using Markdown.
+              This action is intended to send notifications, inform or message specific Slack Users.
+              This action cannot be used to send messages to channels.
+              Upon successful completion, provide the user a friendly confirmation with a link to the message (in markdown).
+              
+            label: "Start a Slack conversation with an Agent"
+            require_user_confirmation: False
+            include_in_progress_indicator: True
+            progress_indicator_message: "Starting a Slack conversation with an Agent..."
+            source: "Slack__SendMessageAsAgent"
+            target: "slack://slackAgentDynamic__SendMessageAsAgent"
+        
+            inputs:
+                "userId": string
+                    description: |
+                      The Slack User ID of the user to send the message to.
+                    label: "Slack User ID"
+                    is_required: True
+                    is_user_input: True
+                "message": string
+                    description: |
+                      Plain text or markdown message to be sent to a user.
+                    label: "Slack Message"
+                    is_required: True
+                    is_user_input: True
+                "recommendedActions": list[object]
+                    description: |
+                      The list of recommended actions. Each action may include an optional style field set to 'primary' to mark the recommended-first action or 'danger' for a destructive or escalation action; omit for secondary actions.
+                    label: "Recommended Actions"
+                    is_required: False
+                    is_user_input: True
+                    complex_data_type_name: "slack_invocable_actions__promptActionButton"
+                "aiGenActionItemIdInContextInput": string
+                    description: |
+                      Populated from $Context.aiGenActionItemIdInContext when present.
+                    label: "aiGenActionItemIdInContextInput"
+                    is_required: False
+                    is_user_input: False
+        
+            outputs:
+                "messageUrl": string
+                    description: |
+                      The Slack message URL for the sent message; opens in Slack.
+                    label: "Slack Message URL"
+                    is_displayable: False
+                    filter_from_agent: False
+                "messageTs": string
+                    description: |
+                      The timestamp for when the message was sent in Slack.
+                    label: "Slack Message Timestamp"
+                    is_displayable: False
+                    filter_from_agent: False
+        
+        SummarizeSlackChannel:
+            description: |
+                Uses the Slack Search API to find relevant messages, files, and sources in a channel during a specified timeframe. Then, uses the search results in a prompt template to summarize results in a readable format.
+            label: "Summarize a Slack Channel"
+            require_user_confirmation: True
+            include_in_progress_indicator: True
+            progress_indicator_message: "Summarizing a Slack channel..."
+            source: "Slack__SummarizeSlackChannel"
+            target: "standardInvocableAction://slackAgentSummarizeChannel"
+        
+            inputs:
+                "channelId": string
+                    description: |
+                      The ID (e.g., C01ABC12345) for the Slack channel to summarize.
+                    label: "Slack Channel ID"
+                    is_required: True
+                    is_user_input: True
+                "searchTimeRange": integer
+                    description: |
+                      Specifies the number of past calendar days to include in the summary.
+                    label: "Search Time Range"
+                    is_required: False
+                    is_user_input: True
+                "searchFilterTerms": string
+                    description: |
+                      Optional terms to filter out content for the summary, e.g., 'Root Cause', 'Bug Bash', 'Deadline'.
+                    label: "Search Terms"
+                    is_required: False
+                    is_user_input: True
+                "summaryTemplateName": string
+                    description: |
+                      Optional Developer Name of the template that will be used to generate the Channel Summary.
+                    label: "Summary Template Name"
+                    is_required: False
+                    is_user_input: True
+        
+            outputs:
+                "channelSummary": object
+                    description: |
+                      The Slack Channel Summary JSON created in the Summarize a Slack Channel Agentforce action.
+                    label: "Slack Channel Summary"
+                    is_displayable: True
+                    filter_from_agent: False
+                    complex_data_type_name: "lightning__richTextType"
+        
+        ReplyInThread:
+            description: |
+                Replies with a message in thread in a Slack channel or direct message. Messages may be in plain text or Markdown format. If no message timestamp is provided or it is ambiguous in the session context, confirm which message the user intends to reply. Upon successful completion, provide the user a friendly confirmation with a link to the message, formatted using Markdown.
+              
+            label: "Reply to a Slack thread"
+            require_user_confirmation: False
+            include_in_progress_indicator: True
+            progress_indicator_message: "Replying to a thread..."
+            source: "Slack__ReplyInThread"
+            target: "slack://slackAgentDynamic__ReplyInThread"
+        
+            inputs:
+                "recipientId": string
+                    description: |
+                      The Slack channel ID or Slack user ID to send a message to.
+                    label: "Slack Recipient ID"
+                    is_required: True
+                    is_user_input: True
+                "messageText": string
+                    description: |
+                      Plain text or Markdown message to be sent to a Slack channel or user.
+                    label: "Slack Message"
+                    is_required: True
+                    is_user_input: True
+                "messageTs": string
+                    description: |
+                      The timestamp for when the root message that includes the thread was sent in Slack.
+                    label: "Slack Message Timestamp"
+                    is_required: True
+                    is_user_input: True
+        
+            outputs:
+                "messageUrl": string
+                    description: |
+                      The URL of the Slack message in thread that was sent; opens in Slack.
+                    label: "Slack Message URL"
+                    is_displayable: False
+                    filter_from_agent: False
+                "messageTs": string
+                    description: |
+                      The timestamp for when the message in thread was sent in Slack.
+                    label: "Slack Message Timestamp"
+                    is_displayable: False
+                    filter_from_agent: False
+        
+connection slack:
+    empty
