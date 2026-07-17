@@ -8,7 +8,7 @@
       "Name": "SA-2026-HK001",
       "AccountId": "@SkylineAviationRef",
       "ContactId": "@Contact1Ref",
-      "PricebookId": "01sQy00000KQeW9IAL",
+      "PricebookId": "@StandardPricebookId",
       "Description": "Annual motor maintenance and parts supply agreement for Hong Kong operations",
       "AgreementType": "Volume",
       "ProductLevel": "Product",

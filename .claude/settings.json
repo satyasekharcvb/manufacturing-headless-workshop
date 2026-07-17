@@ -93,7 +93,9 @@
       "Bash(grep -n \"base64\\\\|Base64\" \"/Users/ssekhar/.local/share/sf/node_modules/@salesforce/source-deploy-retrieve/lib/src/client/retrieveExtract.js\" | head -20)",
       "Read(//Users/ssekhar/.local/share/sf/node_modules/@salesforce/source-deploy-retrieve/lib/src/client/**)",
       "Bash(date -u -v+2H +\"%Y-%m-%dT%H:%M:%S.000+0000\")",
-      "Bash(base64 -d -i \"force-app/main/default/genAiPlannerBundles/Renewal_QBR_Assistant_v1/agentScript/Renewal_QBR_Assistant_v1_definition.agent\" -o /tmp/latest_org_agent.agent)"
+      "Bash(base64 -d -i \"force-app/main/default/genAiPlannerBundles/Renewal_QBR_Assistant_v1/agentScript/Renewal_QBR_Assistant_v1_definition.agent\" -o /tmp/latest_org_agent.agent)",
+      "Bash(find /Users/ssekhar/MyFolders/Headless360Inperson -iname \"*baseline*guide*\" -o -iname \"*baseline-guide*\" 2>/dev/null *)",
+      "Bash(chmod +x /Users/ssekhar/MyFolders/Headless360Inperson/ManufacturingHeadless/data/import-skyline-data.sh)"
     ],
     "additionalDirectories": [
       "/Users/ssekhar/MyFolders/Headless360Inperson/ManufacturingDemo/force-app/main/default/objects/SalesAgreement/fields",

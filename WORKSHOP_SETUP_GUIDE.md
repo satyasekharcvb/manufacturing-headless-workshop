@@ -55,20 +55,34 @@ no manual field edits needed.
 
 ## 2. Seed Data (Skyline Aviation demo account)
 
-Located in `data/`. Import in this order (respects lookups via `saveRefs`/`resolveRefs`):
+Located in `data/`. Import with the wrapper script (respects lookups via `saveRefs`/`resolveRefs`):
 
 ```bash
-sf data import tree --plan data/skyline-aviation-plan.json --target-org <your-org>
+./data/import-skyline-data.sh <your-org>
 ```
 
 This creates, in order: `Account` (Skyline Aviation) → `Contact` (Michael Chen, Sarah Wong) →
 `Case` (3 open cases, 2 High + 1 Medium priority) → `Opportunity` (2 open opps) →
 `SalesAgreement` (SA-2026-HK001, Draft, Quarterly, 4 periods).
 
-> The `PricebookId` in `SalesAgreement.json` is hardcoded to an Id from the source org and
-> won't exist in a new org — remove that field before importing (or update it to your org's
-> Standard Pricebook Id). `WorkshopDataSetup` (below) resolves the Standard Pricebook itself
-> and doesn't depend on this field either way.
+> **Why a wrapper, not a raw `sf data import tree`?** Every cross-record link in the JSON uses
+> an `@referenceId` token that resolves *within* the plan (lwc-recipes style), so the files are
+> org-agnostic — **except `SalesAgreement.PricebookId`**. The Standard Price Book already exists
+> in every org but with a *different* Id, so it can't be a `@ref`. The committed
+> `data/SalesAgreement.json` therefore carries the placeholder `"@StandardPricebookId"`, and the
+> script queries the real Id at runtime and injects it before importing.
+
+If you'd rather do it by hand, query your org's active Standard Price Book and substitute the
+placeholder yourself:
+
+```bash
+sf data query --query "SELECT Id FROM Pricebook2 WHERE IsStandard = true AND IsActive = true LIMIT 1" --target-org <your-org>
+# then replace "@StandardPricebookId" in data/SalesAgreement.json with that Id, and run:
+sf data import tree --plan data/skyline-aviation-plan.json --target-org <your-org>
+```
+
+> `WorkshopDataSetup` (below) also resolves the Standard Pricebook itself and doesn't depend on
+> `SalesAgreement.PricebookId` either way — the field only matters for this tree import.
 
 ### Populate demo data with `WorkshopDataSetup.setupSkylineDemo`
 
