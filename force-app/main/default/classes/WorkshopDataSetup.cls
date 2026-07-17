@@ -31,6 +31,25 @@ public with sharing class WorkshopDataSetup {
         'Heavy-Duty Bearing Kit' => 450
     };
 
+    private static final String DEMO_ACCOUNT_NAME = 'Skyline Aviation';
+
+    // No-arg convenience: resolves the fixed demo account by name so callers don't have to
+    // look up the Id per org. Use this after importing the data tree.
+    public static void setupSkylineDemo() {
+        List<Account> accounts = [
+            SELECT Id FROM Account WHERE Name = :DEMO_ACCOUNT_NAME
+            ORDER BY CreatedDate DESC LIMIT 1
+        ];
+        if (accounts.isEmpty()) {
+            throw new SetupException(
+                'No Account named "' + DEMO_ACCOUNT_NAME + '" found. Import the data tree first.'
+            );
+        }
+        setupSkylineDemo(accounts[0].Id);
+    }
+
+    public class SetupException extends Exception {}
+
     public static void setupSkylineDemo(Id accountId) {
         SalesAgreement agreement = getOrCreateDraftAgreement(accountId);
 

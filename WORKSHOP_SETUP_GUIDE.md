@@ -148,13 +148,14 @@ sf data import tree --plan data/skyline-aviation-plan.json --target-org <your-or
 **The wrapper script above already does this for you** — after importing, it resolves the new
 Account Id and runs `WorkshopDataSetup.setupSkylineDemo` against it. No manual step needed.
 
-If you imported the tree by hand (the manual path), run it yourself once, passing the Account Id:
+If you imported the tree by hand (the manual path), run it yourself once. The no-arg overload
+resolves the fixed `Skyline Aviation` account by name, so there's no Id to look up:
 
 ```bash
-echo "WorkshopDataSetup.setupSkylineDemo('001XXXXXXXXXXXXXXX');" | sf apex run --target-org <your-org>
+echo "WorkshopDataSetup.setupSkylineDemo();" | sf apex run --target-org <your-org>
 ```
-(replace the Id with your Account's; or paste the one-liner into Setup → Developer Console →
-Execute Anonymous instead)
+(or paste the one-liner into Setup → Developer Console → Execute Anonymous instead. A
+`setupSkylineDemo(accountId)` overload still exists if you need to target a different account.)
 
 This single call does everything the old manual steps used to require:
 1. If the account has no `SalesAgreement` yet, creates one in `Draft` status against the

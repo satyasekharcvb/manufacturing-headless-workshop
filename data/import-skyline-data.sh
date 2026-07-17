@@ -38,15 +38,9 @@ rm -f "$TMP_DIR"/*.bak
 echo "Importing tree ..."
 sf data import tree --plan "$TMP_DIR/skyline-aviation-plan.json" --target-org "$TARGET_ORG"
 
-# Resolve the Account Id the import just created, then run WorkshopDataSetup against it.
-# (The Id isn't known until after the import, which is why this step used to be manual.)
-echo "Resolving the Skyline Aviation Account Id ..."
-ACCOUNT_ID="$(sf data query \
-  --query "SELECT Id FROM Account WHERE Name = 'Skyline Aviation' ORDER BY CreatedDate DESC LIMIT 1" \
-  --target-org "$TARGET_ORG" --json | python3 -c 'import sys,json; print(json.load(sys.stdin)["result"]["records"][0]["Id"])')"
-echo "  Account Id: $ACCOUNT_ID"
-
+# Populate the demo data. The no-arg overload resolves the fixed "Skyline Aviation"
+# account by name itself, so there's no per-org Id to look up.
 echo "Running WorkshopDataSetup.setupSkylineDemo ..."
-echo "WorkshopDataSetup.setupSkylineDemo('$ACCOUNT_ID');" | sf apex run --target-org "$TARGET_ORG"
+echo "WorkshopDataSetup.setupSkylineDemo();" | sf apex run --target-org "$TARGET_ORG"
 
 echo "Done. Activation runs in a queued job — wait a few seconds before checking SalesAgreement.Status."
