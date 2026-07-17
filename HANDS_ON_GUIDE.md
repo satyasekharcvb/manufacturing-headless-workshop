@@ -13,33 +13,36 @@ You'll create an **External Client App** in Salesforce (the OAuth client ChatGPT
 
 ### A. In the Salesforce Org — create the External Client App
 
-1. **Setup → App Manager → New External Client App.**
-2. Name it `MaxTurbine Renewal ChatGPT App` and add your email.
-3. Enable **OAuth Settings**.
-4. **Callback URL:** paste the redirect URL ChatGPT gives you when adding the connector (see step C2).
-5. **OAuth scopes:** add `mcp_api` and `refresh_token` (offline access).
-6. **Require PKCE** — leave enabled.
-7. Save. Open the app's **Settings → OAuth** and copy the **Consumer Key** and **Consumer Secret**.
+1. **Important:** Change the email of the epic org farm user with your email. It is necessary to receive verification codes.
+2. **Setup → External Client App Manager → New External Client App.**
+3. Name it `MaxTurbine Renewal ChatGPT App` and add your email.
+4. Check **Enable OAuth** under **API(Enable OAuth Settings)**.
+5. **Callback URL:** paste the redirect URL ChatGPT gives you when adding the connector (see step C2). **Note:** For now you can use https://local:3000 and later replace it with the chat gpt callback url.
+6. **OAuth scopes:** add `refresh_token`, `offline_access` and `mcp_api`.
+7. Uncheck **Require secret for Web Server Flow** and **Require secret for Refresh Token Flow**. Ensure **Require PKCE** and **Issue JSON Web Token (JWT)-based access tokens for named users** is **enabled**.
+8. Click **Create**.
+9. Open the app's **Settings → OAuth** and store the **Consumer Key** and **Consumer Secret** so that you can use it in ChatGPT.
+10. Click Edit. In the Policies tab, select **Admin approved users are pre-authorized** as Permitted Users.
+11. Select **Workshop User** permission set and click **Save**.
 
 ### B. In the Salesforce Org — enable the MCP server
 
-1. **Setup → MCP Servers.**
-2. **Enable** the MCP server if it isn't already on.
-3. Under the **Salesforce Servers** tab, **activate** `sobject-reads`.
+1. **Setup → Integrations → API Catalog → MCP Servers.**
+2. Under the **Salesforce Servers** tab, **activate** `sobject-reads`. (**Note:** You can do it using the dropdown and clicking the **View Details**).
 
 ### C. In ChatGPT — create the plugin
 
-1. Turn on **Developer Mode**: click your **name → Settings → Connectors → Advanced**, and enable **Developer Mode**.
-2. Click your **name → Settings → Plugins → Browse Plugins**.
+1. **Turn on Developer Mode**: In the bottom left, click your **name → Settings → Security and login → Developer mode**, and enable **Developer Mode**.
+2. Click your **Plugins → Browse Plugins** in the **Settings**.
 3. Click **+** to create a new plugin.
-4. Give it a meaningful name — e.g. `MaxTurbine Renewal`.
-5. Copy the **redirect/callback URL** shown here back into step A4 if you haven't yet.
+4. Give it a meaningful name — e.g. `MaxTurbine Account Assitant`.
+5. In the Salesforce Org, click the **View Details** of `sobject-reads` MCP Server, copy its URL, and paste it as **Connection** input in ChatGPT.
 6. Select **OAuth** as the auth type.
-7. Provide the credentials from the Salesforce Org — the **Consumer Key** and **Consumer Secret** from step A7.
-8. In the Salesforce Org, click the **View Details** of `sobject-reads` MCP Server, copy its URL, and paste it as the **MCP endpoint URL** in ChatGPT.
-9. **Agree → Connect** and complete the Salesforce login.
+7. Click **Advanced OAuth Settings**, and copy the **redirect/callback URL** shown here back into step A4 (Replace https://local:3000 with this URL in the External Client App).
+8. Provide the credentials from the Salesforce Org — the **Consumer Key** and **Consumer Secret** from step A7.
+9.  **Agree → Connect** and complete the Salesforce login.
 
-**Verify:** the plugin lists `sobject-reads`. You're ready for Exercise 1.
+**Verify:** the plugin is connected. You're ready for Exercise 1.
 
 ---
 
@@ -48,11 +51,11 @@ You'll create an **External Client App** in Salesforce (the OAuth client ChatGPT
 **Hands-on:**
 
 1. Start a **new chat** in ChatGPT.
-2. Click the **+** in the message box and add your **`MaxTurbine Renewal`** plugin.
-3. Now run these prompts in sequence:
+2. Click the **+** in the message box and add your **`MaxTurbine Account Assistant`** plugin.
+3. Now run these prompts in sequence and examine how the tools are used to get the grounded response:
    - `Find the Account for Skyline Aviation.`
-   - `Now show me that account's active Sales Agreements and their recent adherence.` → calls `sobject-reads`
-   - `Which of my accounts have Q3 renewals with declining adherence?` → composes reads across the portfolio
+   - `Now show me that account's active Sales Agreements and their recent adherence.` 
+   - `Which of my accounts have Q3 renewals with declining adherence?` 
 
 > You just queried live Salesforce data from ChatGPT with zero custom code — the hosted MCP server exposes standard reads directly. But notice the ceiling: the model can see *everything the running user can*, with no narrower scope. In Exercise 2 you'll watch a purpose-built tool tighten that down.
 
