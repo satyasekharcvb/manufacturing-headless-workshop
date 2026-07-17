@@ -195,22 +195,22 @@ Two Named Queries, both parameterized by `accountid` (must be lowercase, no spac
 | Name | Purpose |
 |---|---|
 | `AccountManufacturing360` | One-shot Account 360 view: profile + active Sales Agreements (with adherence score) + Contacts + Assets |
-| `RenewalScheduleSnapshotV2` | Recent (last 120 days) + upcoming schedule periods per product, with Planned/Actual/Proposed quantities and each product's `AdherenceScore__c`, so an agent can see the real consumption trend and calculate a proposed quantity |
+| `RenewalScheduleSnapshot` | Recent (last 120 days) + upcoming schedule periods per product, with Planned/Actual/Proposed quantities and each product's `AdherenceScore__c`, so an agent can see the real consumption trend and calculate a proposed quantity |
 
-> `RenewalScheduleSnapshot` (v1, no `V2` suffix) is superseded — its `WHERE EndDate >= TODAY`
-> filter only showed future periods with `ActualQuantity = 0`, giving an agent nothing to
-> compute a trend from. Use `RenewalScheduleSnapshotV2` only. (Named Queries **cannot be
-> updated via metadata deploy while active as an agent action** — that's why a V2 exists
-> instead of an in-place edit. If you need to iterate again, ship a V3 rather than fighting
-> the activation lock, or delete the `McpServerToolDefinition` record referencing it first
-> via Tooling API.)
+> The `RenewalScheduleSnapshot` query filters on `EndDate >= LAST_N_DAYS:120` so it returns
+> recently completed periods (with real `ActualQuantity`) alongside upcoming ones — an agent
+> needs the completed periods to compute a consumption trend. (A note if you ever iterate on a
+> Named Query already registered as an active MCP tool: it **cannot be updated via metadata
+> deploy while active**. Deactivate/remove the `McpServerToolDefinition` referencing it first,
+> or ship a new query under a new name. Fresh attendee orgs don't hit this — they deploy this
+> query once, clean.)
 
 Deploy:
 
 ```bash
 sf project deploy start --target-org <your-org> \
   --source-dir force-app/main/default/apiNamedQueries/AccountManufacturing360.apiNamedQuery-meta.xml \
-  --source-dir force-app/main/default/apiNamedQueries/RenewalScheduleSnapshotV2.apiNamedQuery-meta.xml
+  --source-dir force-app/main/default/apiNamedQueries/RenewalScheduleSnapshot.apiNamedQuery-meta.xml
 ```
 
 **⚠️ Manual step — Named Queries deploy Inactive.** In Setup → Named Query API (Quick Find
@@ -228,7 +228,7 @@ for the server + tool-registration linkage in this project.
 | MCP Server | Tools registered |
 |---|---|
 | **Manufacturing Sales Agreement Tools** | `AccountSearchAction`, `CaseImpactAction`, `RenewalRiskAction`, `AdherenceAction`, `QuarterlyAdherenceTrendAction` |
-| **Product Custom MCP** | `AccountManufacturing360` (Named Query), `ScheduleUpdateAction`, `RenewalScheduleSnapshotV2` (Named Query) |
+| **Product Custom MCP** | `AccountManufacturing360` (Named Query), `ScheduleUpdateAction`, `RenewalScheduleSnapshot` (Named Query) |
 
 To replicate:
 1. Setup → MCP Servers → Salesforce Servers → **Add MCP Server**. Create the two servers
@@ -290,14 +290,14 @@ What it grants (already encoded in the metadata, nothing else to configure):
 Against the Skyline Aviation account (or your equivalent test account), in ChatGPT:
 
 > "Score Skyline Aviation's renewal risk. If it's high, look at the current schedule from
-> RenewalScheduleSnapshotV2 and use the actual quantities from the most recent completed
+> RenewalScheduleSnapshot and use the actual quantities from the most recent completed
 > period to propose an updated PlannedQuantity for each remaining period that would bring
 > adherence back to 90%. Apply the updates."
 
 Expected tool-call chain: `AccountSearchAction` (or equivalent lookup) →
-`RenewalRiskAction`/risk scorer → `RenewalScheduleSnapshotV2` → `ScheduleUpdateAction`
+`RenewalRiskAction`/risk scorer → `RenewalScheduleSnapshot` → `ScheduleUpdateAction`
 (once per remaining schedule period). Confirm success by re-querying
-`RenewalScheduleSnapshotV2` and seeing non-null `ProposedPlannedQuantity` values.
+`RenewalScheduleSnapshot` and seeing non-null `ProposedPlannedQuantity` values.
 
 ---
 
