@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ApiNamedQuery xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiNamedQueryParameters>
+        <description>Salesforce Account ID to build the 360 view for</description>
+        <parameterLabel>accountid</parameterLabel>
+        <parameterName>accountid</parameterName>
+    </apiNamedQueryParameters>
+    <apiVersion>67.0</apiVersion>
+    <body2>SELECT Id, Name, Industry,
+       (SELECT Id, StartDate, EndDate, TotalAgreementAmount, ScheduleCount, Status, SchedAdherenceScore__c
+        FROM SalesAgreements WHERE Status = 'Activated'),
+       (SELECT Id, Name, Title, Email FROM Contacts),
+       (SELECT Id, Name, Status, InstallDate, Latitude, Longitude FROM Assets)
+FROM Account
+WHERE Id = :accountid</body2>
+    <description>Account 360 view: profile, active Sales Agreements with adherence score, Contacts, and installed Assets in one focused call.</description>
+    <masterLabel>AccountManufacturing360</masterLabel>
+</ApiNamedQuery>

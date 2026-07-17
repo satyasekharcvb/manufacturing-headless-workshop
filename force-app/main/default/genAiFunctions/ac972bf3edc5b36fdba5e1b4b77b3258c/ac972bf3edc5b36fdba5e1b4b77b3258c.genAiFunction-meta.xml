@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GenAiFunction xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>List calendar meetings in a date range, optionally filtered by attendee email. Returns meeting summaries. Data only — no interpretation.</description>
+    <developerName>ac972bf3edc5b36fdba5e1b4b77b3258c</developerName>
+    <invocationTarget>1XOQy0000008LYlOAM</invocationTarget>
+    <invocationTargetType>mcpTool</invocationTargetType>
+    <isConfirmationRequired>false</isConfirmationRequired>
+    <isIncludeInProgressIndicator>false</isIncludeInProgressIndicator>
+    <localDeveloperName>ac972bf3edc5b36fdba5e1b4b77b3258c</localDeveloperName>
+    <masterLabel>list_meetings - MailMCP</masterLabel>
+</GenAiFunction>

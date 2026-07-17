@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GenAiFunction xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Retrieve full detail for a specific meeting, including notes, agenda, and reschedule history. Use after `list_meetings` when you need meeting-level detail.</description>
+    <developerName>a3ba13550bc4e333d94108e3cc86ce42b</developerName>
+    <invocationTarget>1XOQy0000008LYkOAM</invocationTarget>
+    <invocationTargetType>mcpTool</invocationTargetType>
+    <isConfirmationRequired>false</isConfirmationRequired>
+    <isIncludeInProgressIndicator>false</isIncludeInProgressIndicator>
+    <localDeveloperName>a3ba13550bc4e333d94108e3cc86ce42b</localDeveloperName>
+    <masterLabel>get_meeting - MailMCP</masterLabel>
+</GenAiFunction>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>health_score__c</fullName>
+    <description>Health score percentage for the asset (0-100%)</description>
+    <inlineHelpText>Overall health score of the asset based on performance metrics</inlineHelpText>
+    <label>Health Score</label>
+    <precision>5</precision>
+    <required>false</required>
+    <scale>1</scale>
+    <trackHistory>false</trackHistory>
+    <type>Percent</type>
+</CustomField>

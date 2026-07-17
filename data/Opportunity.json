@@ -1,0 +1,26 @@
+{
+  "records": [
+    {
+      "attributes": {
+        "type": "Opportunity",
+        "referenceId": "Opp1Ref"
+      },
+      "Name": "Skyline Aviation - Motor Fleet Upgrade 2026",
+      "StageName": "Qualification",
+      "CloseDate": "2026-09-30",
+      "Amount": 450000,
+      "AccountId": "@SkylineAviationRef"
+    },
+    {
+      "attributes": {
+        "type": "Opportunity",
+        "referenceId": "Opp2Ref"
+      },
+      "Name": "Skyline Aviation - Preventive Maintenance Contract",
+      "StageName": "Proposal/Price Quote",
+      "CloseDate": "2026-08-15",
+      "Amount": 125000,
+      "AccountId": "@SkylineAviationRef"
+    }
+  ]
+}

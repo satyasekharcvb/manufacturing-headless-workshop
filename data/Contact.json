@@ -1,0 +1,28 @@
+{
+  "records": [
+    {
+      "attributes": {
+        "type": "Contact",
+        "referenceId": "Contact1Ref"
+      },
+      "FirstName": "Michael",
+      "LastName": "Chen",
+      "Email": "michael.chen@skylineaviation.com",
+      "Phone": "+852-9876-5432",
+      "Title": "Operations Manager",
+      "AccountId": "@SkylineAviationRef"
+    },
+    {
+      "attributes": {
+        "type": "Contact",
+        "referenceId": "Contact2Ref"
+      },
+      "FirstName": "Sarah",
+      "LastName": "Wong",
+      "Email": "sarah.wong@skylineaviation.com",
+      "Phone": "+852-9876-5433",
+      "Title": "Maintenance Director",
+      "AccountId": "@SkylineAviationRef"
+    }
+  ]
+}

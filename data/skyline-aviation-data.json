@@ -1,0 +1,90 @@
+{
+  "records": [
+    {
+      "attributes": {
+        "type": "Account",
+        "referenceId": "SkylineAviationRef"
+      },
+      "Name": "Skyline Aviation",
+      "Industry": "Aviation",
+      "BillingCity": "Hong Kong",
+      "BillingCountry": "Hong Kong"
+    },
+    {
+      "attributes": {
+        "type": "Contact",
+        "referenceId": "Contact1Ref"
+      },
+      "FirstName": "Michael",
+      "LastName": "Chen",
+      "Email": "michael.chen@skylineaviation.com",
+      "Phone": "+852-9876-5432",
+      "Title": "Operations Manager",
+      "AccountId": "@SkylineAviationRef"
+    },
+    {
+      "attributes": {
+        "type": "Contact",
+        "referenceId": "Contact2Ref"
+      },
+      "FirstName": "Sarah",
+      "LastName": "Wong",
+      "Email": "sarah.wong@skylineaviation.com",
+      "Phone": "+852-9876-5433",
+      "Title": "Maintenance Director",
+      "AccountId": "@SkylineAviationRef"
+    },
+    {
+      "attributes": {
+        "type": "Case",
+        "referenceId": "Case1Ref"
+      },
+      "Subject": "Hong Kong hub - turbine efficiency degradation",
+      "Status": "In Progress",
+      "Priority": "High",
+      "AccountId": "@SkylineAviationRef"
+    },
+    {
+      "attributes": {
+        "type": "Case",
+        "referenceId": "Case2Ref"
+      },
+      "Subject": "Macau facility motor calibration required",
+      "Status": "New",
+      "Priority": "High",
+      "AccountId": "@SkylineAviationRef"
+    },
+    {
+      "attributes": {
+        "type": "Case",
+        "referenceId": "Case3Ref"
+      },
+      "Subject": "Annual maintenance contract renewal discussion",
+      "Status": "New",
+      "Priority": "Medium",
+      "AccountId": "@SkylineAviationRef"
+    },
+    {
+      "attributes": {
+        "type": "Opportunity",
+        "referenceId": "Opp1Ref"
+      },
+      "Name": "Skyline Aviation - Motor Fleet Upgrade 2026",
+      "StageName": "Qualification",
+      "CloseDate": "2026-09-30",
+      "Amount": 450000,
+      "AccountId": "@SkylineAviationRef"
+    },
+    {
+      "attributes": {
+        "type": "Opportunity",
+        "referenceId": "Opp2Ref"
+      },
+      "Name": "Skyline Aviation - Preventive Maintenance Contract",
+      "StageName": "Proposal/Price Quote",
+      "CloseDate": "2026-08-15",
+      "Amount": 125000,
+      "AccountId": "@SkylineAviationRef"
+    }
+  ]
+}
