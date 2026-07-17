@@ -97,7 +97,8 @@
       "Bash(find /Users/ssekhar/MyFolders/Headless360Inperson -iname \"*baseline*guide*\" -o -iname \"*baseline-guide*\" 2>/dev/null *)",
       "Bash(chmod +x /Users/ssekhar/MyFolders/Headless360Inperson/ManufacturingHeadless/data/import-skyline-data.sh)",
       "Bash(chmod +x data/set-federation-id.sh)",
-      "Bash(./data/set-federation-id.sh epic.bf7edf99ae82@orgfarm.salesforce.com)"
+      "Bash(./data/set-federation-id.sh epic.bf7edf99ae82@orgfarm.salesforce.com)",
+      "Bash(python3 -c 'import sys,json; d=json.load\\(sys.stdin\\); [print\\(m[\"fullName\"]\\) for m in d[\"result\"] if m[\"fullName\"].startswith\\(\"Account-\"\\)]')"
     ],
     "additionalDirectories": [
       "/Users/ssekhar/MyFolders/Headless360Inperson/ManufacturingDemo/force-app/main/default/objects/SalesAgreement/fields",
