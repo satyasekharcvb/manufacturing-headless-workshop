@@ -22,11 +22,5 @@
     "saveRefs": false,
     "resolveRefs": true,
     "files": ["Opportunity.json"]
-  },
-  {
-    "sobject": "SalesAgreement",
-    "saveRefs": false,
-    "resolveRefs": true,
-    "files": ["SalesAgreement.json"]
   }
 ]

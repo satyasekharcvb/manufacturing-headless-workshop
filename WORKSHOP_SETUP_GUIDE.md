@@ -121,35 +121,33 @@ Located in `data/`. Import with the wrapper script (respects lookups via `saveRe
 ```
 
 This creates, in order: `Account` (Skyline Aviation) → `Contact` (Michael Chen, Sarah Wong) →
-`Case` (3 open cases, 2 High + 1 Medium priority) → `Opportunity` (2 open opps) →
-`SalesAgreement` (SA-2026-HK001, Draft, Quarterly, 4 periods).
+`Case` (3 open cases, 2 High + 1 Medium priority) → `Opportunity` (2 open opps). The
+`SalesAgreement` is **not** imported here — `WorkshopDataSetup` creates it (see below).
 
-> **Why a wrapper, not a raw `sf data import tree`?** Every cross-record link in the JSON uses
-> an `@referenceId` token that resolves *within* the plan (lwc-recipes style), so the files are
-> org-agnostic — **except `SalesAgreement.PricebookId`**. The Standard Price Book already exists
-> in every org but with a *different* Id, so it can't be a `@ref`. The committed
-> `data/SalesAgreement.json` therefore carries the placeholder `"@StandardPricebookId"`, and the
-> script queries the real Id at runtime and injects it before importing.
+> **Why does the script wrap `sf data import tree` instead of you running it directly?** The
+> tree import only creates the records above, then the script runs `WorkshopDataSetup` for you
+> in the same step. If you'd rather do it by hand, the two commands are:
+>
+> ```bash
+> sf data import tree --plan data/skyline-aviation-plan.json --target-org <your-org>
+> echo "WorkshopDataSetup.setupSkylineDemo();" | sf apex run --target-org <your-org>
+> ```
 
-If you'd rather do it by hand, query your org's active Standard Price Book and substitute the
-placeholder yourself:
-
-```bash
-sf data query --query "SELECT Id FROM Pricebook2 WHERE IsStandard = true AND IsActive = true LIMIT 1" --target-org <your-org>
-# then replace "@StandardPricebookId" in data/SalesAgreement.json with that Id, and run:
-sf data import tree --plan data/skyline-aviation-plan.json --target-org <your-org>
-```
-
-> `WorkshopDataSetup` (below) also resolves the Standard Pricebook itself and doesn't depend on
-> `SalesAgreement.PricebookId` either way — the field only matters for this tree import.
+> **Why isn't the `SalesAgreement` in the data tree?** An imported SA has a fixed
+> `StartDate`/`EndDate`. Once today's date passes the start date, all schedule periods are in
+> the future, and the actuals backfill fails with *"You can edit actuals for up to only 0
+> future schedules."* Letting `WorkshopDataSetup` create the SA keeps its periods relative to
+> today (start −9 months → end +3 months), so there are always completed past periods to
+> backfill. This also means no hardcoded `PricebookId` is needed — the Apex resolves the
+> Standard Price Book itself.
 
 ### Populate demo data with `WorkshopDataSetup.setupSkylineDemo`
 
-**The wrapper script above already does this for you** — after importing, it resolves the new
-Account Id and runs `WorkshopDataSetup.setupSkylineDemo` against it. No manual step needed.
+**The wrapper script above already does this for you** — after importing, it runs
+`WorkshopDataSetup.setupSkylineDemo()`. No separate step needed.
 
-If you imported the tree by hand (the manual path), run it yourself once. The no-arg overload
-resolves the fixed `Skyline Aviation` account by name, so there's no Id to look up:
+If you imported the tree by hand, run it yourself once. The no-arg overload resolves the fixed
+`Skyline Aviation` account by name, so there's no Id to look up:
 
 ```bash
 echo "WorkshopDataSetup.setupSkylineDemo();" | sf apex run --target-org <your-org>
@@ -158,8 +156,8 @@ echo "WorkshopDataSetup.setupSkylineDemo();" | sf apex run --target-org <your-or
 `setupSkylineDemo(accountId)` overload still exists if you need to target a different account.)
 
 This single call does everything the old manual steps used to require:
-1. If the account has no `SalesAgreement` yet, creates one in `Draft` status against the
-   Standard Pricebook.
+1. Creates the `SalesAgreement` in `Draft` status against the Standard Pricebook, with dates
+   relative to today (start −9 months, end +3 months, Quarterly, 4 periods).
 2. Inserts `SalesAgreementProduct` lines for Turbine Blade Assembly, Gasket Seal Kit, and
    Heavy-Duty Bearing Kit (Standard Pricebook entries), then queues a `Queueable`
    (`WorkshopDataSetup.AgreementActivationJob`) to move the agreement from `Draft` → `Approved`
