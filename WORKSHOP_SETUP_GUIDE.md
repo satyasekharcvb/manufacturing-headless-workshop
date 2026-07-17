@@ -1,7 +1,7 @@
 # Headless 360 Workshop — Full Setup & Replication Guide
 
 This guide covers everything built so far (Beats 1–4 groundwork) in the order you'd
-replicate it in a fresh org: data model → metadata → data → Apex → Named Queries →
+replicate it in a fresh org: data model → Apex → seed data → Named Queries →
 MCP Server registration → permissions → manual Setup UI steps.
 
 Only components actually used by the working demo are listed. The project contains
@@ -53,7 +53,66 @@ no manual field edits needed.
 
 ---
 
-## 2. Seed Data (Skyline Aviation demo account)
+## 2. Apex Classes — only what's actually used
+
+Two layers: **calculator classes** (`public`, do the real logic/SOQL) and **action wrapper
+classes** (`global`, thin `@InvocableMethod` shims that Setup's "Add Server Assets" picker
+and Flow can discover — Salesforce requires `global` visibility for that picker).
+
+| Calculator (logic) | Action wrapper (`global`, invocable) | Used by |
+|---|---|---|
+| `AdherenceCalculator` | `AdherenceAction` | Adherence summary tool |
+| `CaseImpactAnalyzer` | `CaseImpactAction` | Case impact tool |
+| `QuarterlyAdherenceTrendCalculator` | `QuarterlyAdherenceTrendAction` | Trend tool |
+| `RenewalRiskScorer` (contains both the legacy LWC-facing `calculateRenewalRisk` **and** the invocable `scoreRenewalRisk`) | `RenewalRiskAction` (wraps `calculateRenewalRisk`) — `scoreRenewalRisk` is itself `global` and invocable directly, no separate wrapper class | Renewal risk scoring tool |
+| — | `AccountSearchAction` | Account lookup by name (SOSL) tool |
+| — | `ScheduleUpdateAction` | Writes `ProposedPlannedQuantity` on a schedule record |
+
+Plus `WorkshopDataSetup` (§3) — a setup-only utility, not registered as an MCP tool, that
+populates demo data so the tools above have something meaningful to score.
+
+**⚠️ Deploy all of these in ONE command.** `WorkshopDataSetup` calls
+`AdherenceCalculator.updateScheduleAdherence`, so deploying it on its own fails with
+`Variable does not exist: AdherenceCalculator` — the dependency isn't in the org yet. Deploying
+the whole set together lets them compile as a unit. (Deploy the entire folder with
+`--source-dir force-app/main/default/classes` if you prefer.)
+
+```bash
+sf project deploy start --target-org <your-org> \
+  --source-dir force-app/main/default/classes/AdherenceCalculator.cls \
+  --source-dir force-app/main/default/classes/AdherenceAction.cls \
+  --source-dir force-app/main/default/classes/CaseImpactAnalyzer.cls \
+  --source-dir force-app/main/default/classes/CaseImpactAction.cls \
+  --source-dir force-app/main/default/classes/QuarterlyAdherenceTrendCalculator.cls \
+  --source-dir force-app/main/default/classes/QuarterlyAdherenceTrendAction.cls \
+  --source-dir force-app/main/default/classes/RenewalRiskScorer.cls \
+  --source-dir force-app/main/default/classes/RenewalRiskAction.cls \
+  --source-dir force-app/main/default/classes/AccountSearchAction.cls \
+  --source-dir force-app/main/default/classes/ScheduleUpdateAction.cls \
+  --source-dir force-app/main/default/classes/WorkshopDataSetup.cls
+```
+
+**None of the 10 tool-facing classes need anything run after deploy** — they are pure
+`@InvocableMethod`/`@AuraEnabled` classes with no static initializers, custom metadata
+dependencies, or one-time jobs. `WorkshopDataSetup` is the one exception: it's a setup
+utility meant to be *invoked* once per demo account via anonymous Apex — see §3 for the
+one-line call.
+
+### Key business-rule gotchas encountered (informs `ScheduleUpdateAction`'s design)
+- A Sales Agreement in `Activated` status blocks direct writes to
+  `SalesAgreementProductSchedule.PlannedQuantity`.
+- It does **not** block writes to `ProposedPlannedQuantity` — that's the field
+  `ScheduleUpdateAction.applyUpdate` writes to, so the agreement never has to leave
+  `Activated` status.
+- `UnderRevision → Approved` auto-promotes to `Activated` (platform automation completes the
+  transition); you cannot set `Status = 'Activated'` directly from `UnderRevision`.
+
+---
+
+## 3. Seed Data (Skyline Aviation demo account)
+
+> Deploy the Apex classes (§2) **before** this step — `WorkshopDataSetup.setupSkylineDemo`
+> (below) depends on them.
 
 Located in `data/`. Import with the wrapper script (respects lookups via `saveRefs`/`resolveRefs`):
 
@@ -86,23 +145,18 @@ sf data import tree --plan data/skyline-aviation-plan.json --target-org <your-or
 
 ### Populate demo data with `WorkshopDataSetup.setupSkylineDemo`
 
-Deploy the class (also listed in §3's full deploy command):
+**The wrapper script above already does this for you** — after importing, it resolves the new
+Account Id and runs `WorkshopDataSetup.setupSkylineDemo` against it. No manual step needed.
+
+If you imported the tree by hand (the manual path), run it yourself once, passing the Account Id:
 
 ```bash
-sf project deploy start --source-dir force-app/main/default/classes/WorkshopDataSetup.cls --target-org <your-org>
-```
-
-Then run it once per account via anonymous Apex, passing the Account Id (Skyline Aviation, or
-your equivalent):
-
-```bash
-echo "WorkshopDataSetup.setupSkylineDemo('001XXXXXXXXXXXXXXX');" > /tmp/run-workshop-data-setup.apex
-sf apex run --file /tmp/run-workshop-data-setup.apex --target-org <your-org>
+echo "WorkshopDataSetup.setupSkylineDemo('001XXXXXXXXXXXXXXX');" | sf apex run --target-org <your-org>
 ```
 (replace the Id with your Account's; or paste the one-liner into Setup → Developer Console →
 Execute Anonymous instead)
 
-This single call does everything §2's old manual steps used to require:
+This single call does everything the old manual steps used to require:
 1. If the account has no `SalesAgreement` yet, creates one in `Draft` status against the
    Standard Pricebook.
 2. Inserts `SalesAgreementProduct` lines for Turbine Blade Assembly, Gasket Seal Kit, and
@@ -130,58 +184,6 @@ account already has Assets, step 5 is skipped.
 
 Because activation runs in a queued job, wait a few seconds after calling `setupSkylineDemo`
 before checking `SalesAgreement.Status`.
-
----
-
-## 3. Apex Classes — only what's actually used
-
-Two layers: **calculator classes** (`public`, do the real logic/SOQL) and **action wrapper
-classes** (`global`, thin `@InvocableMethod` shims that Setup's "Add Server Assets" picker
-and Flow can discover — Salesforce requires `global` visibility for that picker).
-
-| Calculator (logic) | Action wrapper (`global`, invocable) | Used by |
-|---|---|---|
-| `AdherenceCalculator` | `AdherenceAction` | Adherence summary tool |
-| `CaseImpactAnalyzer` | `CaseImpactAction` | Case impact tool |
-| `QuarterlyAdherenceTrendCalculator` | `QuarterlyAdherenceTrendAction` | Trend tool |
-| `RenewalRiskScorer` (contains both the legacy LWC-facing `calculateRenewalRisk` **and** the invocable `scoreRenewalRisk`) | `RenewalRiskAction` (wraps `calculateRenewalRisk`) — `scoreRenewalRisk` is itself `global` and invocable directly, no separate wrapper class | Renewal risk scoring tool |
-| — | `AccountSearchAction` | Account lookup by name (SOSL) tool |
-| — | `ScheduleUpdateAction` | Writes `ProposedPlannedQuantity` on a schedule record |
-
-Plus `WorkshopDataSetup` (§2) — a setup-only utility, not registered as an MCP tool, that
-populates demo data so the tools above have something meaningful to score.
-
-Deploy all of them in one shot:
-
-```bash
-sf project deploy start --target-org <your-org> \
-  --source-dir force-app/main/default/classes/AdherenceCalculator.cls \
-  --source-dir force-app/main/default/classes/AdherenceAction.cls \
-  --source-dir force-app/main/default/classes/CaseImpactAnalyzer.cls \
-  --source-dir force-app/main/default/classes/CaseImpactAction.cls \
-  --source-dir force-app/main/default/classes/QuarterlyAdherenceTrendCalculator.cls \
-  --source-dir force-app/main/default/classes/QuarterlyAdherenceTrendAction.cls \
-  --source-dir force-app/main/default/classes/RenewalRiskScorer.cls \
-  --source-dir force-app/main/default/classes/RenewalRiskAction.cls \
-  --source-dir force-app/main/default/classes/AccountSearchAction.cls \
-  --source-dir force-app/main/default/classes/ScheduleUpdateAction.cls \
-  --source-dir force-app/main/default/classes/WorkshopDataSetup.cls
-```
-
-**None of the 10 tool-facing classes need anything run after deploy** — they are pure
-`@InvocableMethod`/`@AuraEnabled` classes with no static initializers, custom metadata
-dependencies, or one-time jobs. `WorkshopDataSetup` is the one exception: it's a setup
-utility meant to be *invoked* once per demo account via anonymous Apex — see §2 for the
-one-line call.
-
-### Key business-rule gotchas encountered (informs `ScheduleUpdateAction`'s design)
-- A Sales Agreement in `Activated` status blocks direct writes to
-  `SalesAgreementProductSchedule.PlannedQuantity`.
-- It does **not** block writes to `ProposedPlannedQuantity` — that's the field
-  `ScheduleUpdateAction.applyUpdate` writes to, so the agreement never has to leave
-  `Activated` status.
-- `UnderRevision → Approved` auto-promotes to `Activated` (platform automation completes the
-  transition); you cannot set `Status = 'Activated'` directly from `UnderRevision`.
 
 ---
 
@@ -301,8 +303,8 @@ Expected tool-call chain: `AccountSearchAction` (or equivalent lookup) →
 ## Deploy order summary (copy/paste checklist)
 
 1. Custom fields (§1)
-2. Apex classes incl. `WorkshopDataSetup` (§3)
-3. Seed data import (§2), then run `WorkshopDataSetup.setupSkylineDemo(accountId)` —
+2. Apex classes incl. `WorkshopDataSetup` (§2) — **deploy all in one command**
+3. Seed data import (§3), then run `WorkshopDataSetup.setupSkylineDemo(accountId)` —
    populates Sales Agreement, products, activation, schedule actuals, adherence scores,
    and Assets in one call
 4. Named Queries (§4) → **manually activate each in Setup**

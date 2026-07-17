@@ -25,6 +25,12 @@ public with sharing class WorkshopDataSetup {
         'Heavy-Duty Bearing Kit' => 58
     };
 
+    private static final Map<String, Decimal> UNIT_PRICE_BY_PRODUCT = new Map<String, Decimal>{
+        'Turbine Blade Assembly' => 1200,
+        'Gasket Seal Kit' => 150,
+        'Heavy-Duty Bearing Kit' => 450
+    };
+
     public static void setupSkylineDemo(Id accountId) {
         SalesAgreement agreement = getOrCreateDraftAgreement(accountId);
 
@@ -95,6 +101,8 @@ public with sharing class WorkshopDataSetup {
     }
 
     private static void insertProductLines(Id agreementId) {
+        ensureProductsAndPricebookEntries();
+
         Map<String, Id> pricebookEntryIdByProductName = new Map<String, Id>();
         for (PricebookEntry pbe : [
             SELECT Id, Product2.Name
@@ -119,6 +127,56 @@ public with sharing class WorkshopDataSetup {
             ));
         }
         insert lines;
+    }
+
+    // A fresh org has the demo Products but no Standard PricebookEntries for them (or no
+    // Products at all). Without a Standard PricebookEntry, the SalesAgreementProduct insert
+    // above finds nothing and the agreement is left empty. Create whatever's missing so the
+    // rest of setup can proceed in any org.
+    private static void ensureProductsAndPricebookEntries() {
+        Id standardPricebookId = [SELECT Id FROM Pricebook2 WHERE IsStandard = true LIMIT 1].Id;
+
+        Map<String, Id> productIdByName = new Map<String, Id>();
+        for (Product2 p : [SELECT Id, Name FROM Product2 WHERE Name IN :PRODUCT_NAMES]) {
+            productIdByName.put(p.Name, p.Id);
+        }
+
+        List<Product2> productsToInsert = new List<Product2>();
+        for (String productName : PRODUCT_NAMES) {
+            if (!productIdByName.containsKey(productName)) {
+                productsToInsert.add(new Product2(Name = productName, IsActive = true));
+            }
+        }
+        if (!productsToInsert.isEmpty()) {
+            insert productsToInsert;
+            for (Product2 p : productsToInsert) {
+                productIdByName.put(p.Name, p.Id);
+            }
+        }
+
+        Set<Id> productIdsWithStandardEntry = new Set<Id>();
+        for (PricebookEntry pbe : [
+            SELECT Product2Id FROM PricebookEntry
+            WHERE Product2.Name IN :PRODUCT_NAMES AND Pricebook2.IsStandard = true
+        ]) {
+            productIdsWithStandardEntry.add(pbe.Product2Id);
+        }
+
+        List<PricebookEntry> entriesToInsert = new List<PricebookEntry>();
+        for (String productName : PRODUCT_NAMES) {
+            Id productId = productIdByName.get(productName);
+            if (productId != null && !productIdsWithStandardEntry.contains(productId)) {
+                entriesToInsert.add(new PricebookEntry(
+                    Pricebook2Id = standardPricebookId,
+                    Product2Id = productId,
+                    UnitPrice = UNIT_PRICE_BY_PRODUCT.get(productName),
+                    IsActive = true
+                ));
+            }
+        }
+        if (!entriesToInsert.isEmpty()) {
+            insert entriesToInsert;
+        }
     }
 
     private static void backfillActualQuantities(Id agreementId) {
