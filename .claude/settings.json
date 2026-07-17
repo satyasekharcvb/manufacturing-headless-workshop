@@ -101,7 +101,19 @@
       "Bash(python3 -c 'import sys,json; d=json.load\\(sys.stdin\\); [print\\(m[\"fullName\"]\\) for m in d[\"result\"] if m[\"fullName\"].startswith\\(\"Account-\"\\)]')",
       "Bash(git checkout *)",
       "Bash(git restore *)",
-      "Bash(python3 -c 'import sys,json; d=json.load\\(sys.stdin\\); [print\\(m[\"fullName\"]\\) for m in d[\"result\"] if m[\"fullName\"].startswith\\(\"SalesAgreement-\"\\)]')"
+      "Bash(python3 -c 'import sys,json; d=json.load\\(sys.stdin\\); [print\\(m[\"fullName\"]\\) for m in d[\"result\"] if m[\"fullName\"].startswith\\(\"SalesAgreement-\"\\)]')",
+      "Bash(npm run *)",
+      "Bash(pkill -f \"vite\")",
+      "Bash(npm config *)",
+      "Read(//Users/ssekhar/**)",
+      "Bash(npx tsc *)",
+      "Bash(echo \"=== tsc exit: $? ===\")",
+      "Read(//Users/ssekhar/.nvm/versions/node/**)",
+      "Read(//usr/local/bin/**)",
+      "Read(//opt/homebrew/opt/node@22/bin/**)",
+      "Bash(rm -f /tmp/vibes-dev.log /tmp/vite-dev.log; echo cleaned)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:5173/)",
+      "Bash(curl -s http://localhost:5173/)"
     ],
     "additionalDirectories": [
       "/Users/ssekhar/MyFolders/Headless360Inperson/ManufacturingDemo/force-app/main/default/objects/SalesAgreement/fields",
